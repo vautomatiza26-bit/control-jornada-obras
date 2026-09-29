@@ -249,8 +249,6 @@ No hay un CI con tests automáticos (ver limitaciones). Lo que sí hice, de form
 
 ## 9. Cómo trabajé
 
-> *[REVISA Y ADAPTA ESTE PÁRRAFO A LO QUE HICISTE TÚ. Que sea exacto.]*
->
 > Definí los requisitos y las restricciones reales con la empresa, tomé las decisiones de producto y operé las pruebas en entorno real.
 > Desarrollé el sistema iterando con un asistente de IA (Claude): generó gran parte del código y los flujos, y yo lo revisé, lo probé
 > y validé cada pieza contra datos reales antes de darla por buena.
@@ -264,7 +262,7 @@ No hay un CI con tests automáticos (ver limitaciones). Lo que sí hice, de form
 
 ---
 
-**Autor:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/) · [GitHub](https://github.com/)  
+**Autor:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/víctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)  
 **Licencia:** MIT (ver [`LICENSE`](LICENSE)).
 
 *Datos de la empresa, trabajadores y obras anonimizados. Este repositorio no contiene claves, identificadores reales ni datos personales.*

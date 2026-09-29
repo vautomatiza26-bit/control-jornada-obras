@@ -249,8 +249,6 @@ There is no CI with automated tests yet (see limitations). What I did, systemati
 
 ## 9. How I worked
 
-> *[REVIEW AND ADAPT THIS PARAGRAPH TO WHAT YOU ACTUALLY DID. Keep it accurate.]*
->
 > I defined the requirements and real-world constraints with the company, made the product decisions and ran the tests in the live environment.
 > I built the system iteratively with an AI assistant (Claude): it generated much of the code and the workflows, and I reviewed it, tested it
 > and validated each piece against real data before accepting it.
@@ -264,7 +262,7 @@ There is no CI with automated tests yet (see limitations). What I did, systemati
 
 ---
 
-**Author:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/) · [GitHub](https://github.com/)
+**Author:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/víctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)
 **License:** MIT (see [`LICENSE`](LICENSE)).
 
 *Company, worker and site data anonymised. This repository contains no keys, real identifiers or personal data.*
