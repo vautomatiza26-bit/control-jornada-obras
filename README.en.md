@@ -3,11 +3,11 @@
 🇪🇸 [Leer en español](README.md)
 
 > Automation case study: replacing paper-based clock-in and daily work reports at a construction subcontracting company
-> (≈40 workers on sites spread across Spain) with a custom web app integrated with a time-tracking service,
-> plus alerts, reports and automatic onboarding/offboarding of workers.
+> (≈100 workers from two companies, on sites spread across Spain) with a custom web app integrated with a time-tracking service,
+> plus alerts, reports and onboarding/offboarding of workers synced from a master sheet.
 >
-> **Status:** complete and tested with the company's real data. Go-live planned for October 2026;
-> results from the first weeks will be added in section 7.
+> **Status:** in production since October 2026, with real data and two companies on the same system.
+> Measured results will be added in section 7.
 > **Stack:** HTML/JS · Supabase (Postgres, RLS, RPC functions) · n8n · Jibble API · Netlify · Telegram · Google Sheets.
 
 ---
@@ -96,7 +96,7 @@ roster) lives in SQL, where it can be tested in isolation.
 
 ### 3.1 Identity without accounts: PIN → "trusted phone" → activation link
 
-- Each worker initially had a **PIN** (stored with bcrypt). In practice, a PIN that 40 people must remember for a daily action
+- Each worker initially had a **PIN** (stored with bcrypt). In practice, a PIN that dozens of people must remember for a daily action
   **gets forgotten, and then people don't clock in**.
 - Solution: the phone stores a **random 256-bit key**; the database only stores its **SHA-256 hash**. A phone remembers
   **one person only**, so nobody can hold several colleagues' identities on their device and clock in for them.
@@ -166,6 +166,38 @@ only when the candidate is unique, and a **database lock** so two simultaneous r
 - An **information notice inside the app** before the first clock-in, with **stored proof of reading** (version, date and time, also offline).
 - This is not legal advice; the notice text is pending review by a specialist.
 
+### 3.9 One app for two companies
+
+When a second company wanted to use the system there were two paths: **clone the whole infrastructure** or **share tables with a `company` field**.
+I chose the second: one app, one set of flows to maintain, and a third company only needs configuration.
+The cost is that a filtering bug would mix data, so **every flow that writes to a sheet or folder filters explicitly by company**,
+and every report carries the company as a column and is summarised separately.
+
+Two non-obvious details:
+
+- **Nightly copies are one flow per company, each with its own cursor.** The cursor (how far it copied) only advances if the sheet write succeeded,
+  and rows are upserted by `id`, so re-running never duplicates rows. A company with no data yet simply stops without writing anything.
+- **Alerts name the company and link to its own admin panel**, so the person in charge isn't sent to look where the data isn't.
+
+### 3.10 Paper work reports read by AI, with human review
+
+Some crews still fill in the report on paper. The app lets them photograph it; a vision model (Gemini) extracts site, date, names and hours.
+**The AI proposes, it doesn't decide:** before saving, strict rules check that hours are between 4 and 10, that the name matches a real worker,
+that the model flagged no doubts, that no worker is repeated and that the date on the paper matches the photo's. If any check fails, the report goes
+to a **review queue** and an alert is sent on Telegram. If reading fails altogether it is retried with growing back-off and, after several attempts, someone is asked to create it by hand.
+A misread is predictable; what can't happen is one ending up in payroll unseen.
+
+### 3.11 Backups on a free plan
+
+The data project is on a plan **without automatic backups**, so I built two weekly flows:
+
+1. **n8n flows:** exports every flow as JSON to a dated folder.
+2. **Database:** a SQL function, executable **only by the service role** (revoked from the rest and verified), returns all tables; a flow saves it to Drive
+   and reports the number of tables and rows. If the dump comes out incomplete, the alert says so.
+
+Limits I know and don't hide: up to a week of data can be lost, storage photos aren't included and restoring from JSON is manual.
+Once the business relies more on the app, the natural step is a plan with native daily backups.
+
 ---
 
 ## 4. What is in this repository
@@ -219,6 +251,12 @@ There is no CI with automated tests yet (see limitations). What I did, systemati
    held, but for the right reason. *Lesson:* every negative test needs a control case. **That is why terminations in Jibble are not automated**: the API can only delete outright.
 4. **A "reasonable" rule that hid data.** It flagged a clock-in as offline only if it took over 2 minutes; a short outage came out unflagged with the server's time.
    It now depends on the record's **origin**, not on a time threshold.
+5. **Adding a second company made one clock-in retry endlessly.** Those from the company with no Jibble account had no identifier there, failed and were retried
+   every minute up to 60 times. *Lesson:* when adding a company, go through **every flow** asking what changes for it, not just testing the happy path.
+6. **A new app on another domain would have failed on CORS.** The webhook only allowed the first company's domain. *Lesson:* same one: what breaks when you expand
+   doesn't show up by testing the first installation.
+7. **Referencing sheet tabs by number instead of name.** When a sheet is duplicated, internal ids change and the flow points at the wrong tab.
+   Tabs are now referenced **by name** and the sheet id comes from the data, not typed into every node.
 
 ---
 
@@ -243,7 +281,10 @@ There is no CI with automated tests yet (see limitations). What I did, systemati
 - **Automatic creation in the time-tracking service:** the API call was tested in isolation against the real service; the full integration
   (with its anti-duplicate lock) was tested with simulated data and will be validated with the first real hire.
 - **Own monitoring:** alerts depend on n8n and Telegram; a health dashboard is missing.
-- **Compliance:** the information text and personal-data processing need review by a specialist before go-live.
+- **Backups:** weekly and with limits (see §3.11); an end-to-end tested restore and a move to native daily backups are missing.
+- **Secrets in nodes:** a secret header is still typed into one node; the plan is to move it to a credential.
+- **Companies table:** `company` is plain text today; a proper table would allow validating and adding companies without touching code.
+- **Compliance:** the information text and personal-data processing need review by a specialist.
 
 ---
 
@@ -262,7 +303,7 @@ There is no CI with automated tests yet (see limitations). What I did, systemati
 
 ---
 
-**Author:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/víctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)
+**Author:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/v%C3%ADctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)
 **License:** MIT (see [`LICENSE`](LICENSE)).
 
 *Company, worker and site data anonymised. This repository contains no keys, real identifiers or personal data.*

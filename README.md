@@ -3,11 +3,11 @@
 🇬🇧 [Read this in English](README.en.md)
 
 > Caso práctico de automatización: sustituir el fichaje y los partes en papel de una empresa de subcontratación
-> (≈40 operarios en obras repartidas por España) por una app web propia, integrada con un sistema de registro
-> horario, con avisos, informes y altas/bajas automáticas.
+> (≈100 operarios de dos empresas, en obras repartidas por España) por una app web propia, integrada con un sistema de registro
+> horario, con avisos, informes y altas/bajas sincronizadas desde una hoja maestra.
 >
-> **Estado:** sistema completo y probado con datos reales de la empresa. Puesta en producción prevista para octubre de 2026;
-> los resultados de las primeras semanas se añadirán en la sección 7.
+> **Estado:** en producción desde octubre de 2026, con datos reales y dos empresas sobre el mismo sistema.
+> Los resultados medidos se añadirán en la sección 7.
 > **Stack:** HTML/JS · Supabase (Postgres, RLS, funciones RPC) · n8n · Jibble API · Netlify · Telegram · Google Sheets.
 
 ---
@@ -96,7 +96,7 @@ qué cambia en la plantilla) vive en SQL, donde se puede probar de forma aislada
 
 ### 3.1 Identidad sin cuentas: PIN → "móvil de confianza" → enlace de activación
 
-- Inicialmente cada trabajador tenía un **PIN** (guardado con bcrypt). En la práctica, un PIN para 40 personas que fichan
+- Inicialmente cada trabajador tenía un **PIN** (guardado con bcrypt). En la práctica, un PIN para decenas de personas que fichan
   a diario **se olvida y hace que no fichen**.
 - Solución: el móvil guarda una **llave aleatoria de 256 bits**; en la base de datos solo se almacena su **hash SHA-256**.
   Un móvil recuerda **a una sola persona**, así que nadie puede tener guardados a varios compañeros y fichar por ellos.
@@ -166,6 +166,38 @@ solo si el candidato es único, y un **candado en base de datos** para que dos e
 - **Aviso informativo dentro de la app** antes del primer fichaje, con **constancia guardada** (versión, fecha y hora, también sin conexión).
 - Este proyecto no es asesoramiento legal; el texto del aviso está pendiente de revisión por un especialista.
 
+### 3.9 Una sola app para dos empresas
+
+Cuando una segunda empresa quiso usar el sistema, había dos caminos: **clonar toda la infraestructura** o **compartir tablas con un campo `empresa`**.
+Elegí lo segundo: una app, un conjunto de flujos que mantener y una tercera empresa que solo requiere configuración.
+El coste es que un fallo de filtrado mezclaría datos, así que **cada flujo que escribe en una hoja o carpeta filtra explícitamente por empresa**,
+y cada informe lleva la empresa como columna y se resume por separado.
+
+Dos detalles que no son obvios:
+
+- **Las copias nocturnas son un flujo por empresa, cada uno con su propio cursor.** El cursor (hasta dónde se copió) solo avanza si la escritura en la hoja terminó bien,
+  y se actualiza por `id`, así que repetir una ejecución nunca duplica filas. Una empresa sin datos todavía simplemente se detiene sin escribir nada.
+- **Los avisos indican la empresa y enlazan a su propio panel de administración**, para no mandar al responsable a mirar donde no está el dato.
+
+### 3.10 Partes en papel leídos con IA, con revisión humana
+
+Algunos equipos siguen rellenando el parte en papel. La app permite fotografiarlo; un modelo de visión (Gemini) extrae obra, fecha, nombres y horas.
+**La IA propone, no decide:** antes de guardar, unas reglas estrictas comprueban que las horas estén entre 4 y 10, que el nombre coincida con un trabajador real,
+que no haya dudas marcadas por el modelo ni trabajadores repetidos y que la fecha del papel coincida con la de la foto. Si falla cualquiera, el parte
+queda en una **cola de revisión** y se avisa por Telegram. Si la lectura falla del todo, se reintenta con espera creciente y, tras varios intentos, se pide crearlo a mano.
+Un error de lectura es previsible; lo que no puede pasar es que acabe en una nómina sin que nadie lo vea.
+
+### 3.11 Copias de seguridad con el plan gratuito
+
+El proyecto de datos está en un plan **sin copias automáticas**, así que monté dos flujos semanales:
+
+1. **Flujos de n8n:** exporta cada flujo como JSON a una carpeta con la fecha.
+2. **Base de datos:** una función SQL, ejecutable **solo por el rol de servicio** (revocada al resto y comprobada), devuelve todas las tablas; un flujo la guarda en Drive
+   y avisa con el recuento de tablas y filas. Si el volcado sale incompleto, el aviso lo marca.
+
+Límites que conozco y no escondo: puede perderse hasta una semana de datos, las fotos del almacenamiento no están incluidas y restaurar desde un JSON es manual.
+Cuando el negocio dependa más de la app, lo natural es pasar al plan con copias diarias nativas.
+
 ---
 
 ## 4. Qué hay en este repositorio
@@ -219,6 +251,12 @@ No hay un CI con tests automáticos (ver limitaciones). Lo que sí hice, de form
    pero por la razón correcta. *Lección:* toda prueba negativa necesita un caso de control. Y **por eso las bajas en Jibble no se automatizan**: la API solo sabe borrar del todo.
 4. **Una regla "razonable" que ocultaba datos.** Marcaba como "sin conexión" solo lo que tardaba más de 2 minutos; un corte corto salía sin marca y con la hora del servidor.
    Pasó a depender del **origen** del fichaje, no de un umbral.
+5. **Al añadir una segunda empresa, un fichaje se reintentaba sin fin.** Los de la empresa sin cuenta en Jibble no tenían identificador allí, fallaban y se reintentaban
+   cada minuto hasta 60 veces. *Lección:* al añadir una empresa, repasar **cada flujo** preguntándose qué cambia para ella, no solo probar el caso feliz.
+6. **Una app nueva en otro dominio habría fallado por CORS.** El webhook solo admitía el dominio de la primera empresa. *Lección:* lo mismo: lo que se rompe al ampliar
+   no se ve probando la primera instalación.
+7. **Referenciar pestañas de hoja por número y no por nombre.** Al duplicar una hoja, los identificadores internos cambian y el flujo apunta a la pestaña equivocada.
+   Ahora se referencian **por nombre** y el identificador de la hoja se pasa desde los datos, no se escribe a mano en cada nodo.
 
 ---
 
@@ -243,7 +281,10 @@ No hay un CI con tests automáticos (ver limitaciones). Lo que sí hice, de form
 - **Alta automática en el registro horario:** la llamada a la API se probó de forma aislada contra el servicio real; la integración completa
   (con su candado anti-duplicados) se probó con datos simulados y se validará con la primera alta real.
 - **Monitorización propia:** los avisos dependen de n8n y Telegram; falta un panel de salud.
-- **Cumplimiento:** el texto informativo y el tratamiento de datos requieren revisión por un especialista antes del arranque.
+- **Copias de seguridad:** semanales y con límites (ver §3.11); falta una restauración probada de extremo a extremo y pasar a copias diarias nativas.
+- **Secretos en nodos:** alguna cabecera secreta sigue escrita en un nodo; el plan es moverla a una credencial.
+- **Tabla de empresas:** hoy `empresa` es un texto; una tabla propia permitiría validar y añadir empresas sin tocar código.
+- **Cumplimiento:** el texto informativo y el tratamiento de datos requieren revisión por un especialista.
 
 ---
 
@@ -262,7 +303,7 @@ No hay un CI con tests automáticos (ver limitaciones). Lo que sí hice, de form
 
 ---
 
-**Autor:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/víctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)  
+**Autor:** Víctor Herreros Arenas · [LinkedIn](https://www.linkedin.com/in/v%C3%ADctor-herreros-arenas-776835401/) · [GitHub](https://github.com/vautomatiza26-bit)  
 **Licencia:** MIT (ver [`LICENSE`](LICENSE)).
 
 *Datos de la empresa, trabajadores y obras anonimizados. Este repositorio no contiene claves, identificadores reales ni datos personales.*
